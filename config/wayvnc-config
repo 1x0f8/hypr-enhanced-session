@@ -1,0 +1,15 @@
+# wayvnc config
+# Installed to: ~/.config/wayvnc/config
+#
+# Kept deliberately minimal for phase 1 testing: no TLS, no VNC auth,
+# because it only ever listens on 127.0.0.1 and the only client
+# connecting to it will be the local xrdp process. xrdp is what
+# actually authenticates the remote user (via the normal Hyper-V
+# enhanced-session login flow) before it ever proxies through to here.
+#
+# Harden this later (enable_auth + a password file) if you ever plan
+# to expose this port beyond loopback. Do not do that without auth.
+
+address=127.0.0.1
+port=5950
+enable_auth=false

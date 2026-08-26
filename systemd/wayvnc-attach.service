@@ -1,0 +1,15 @@
+[Unit]
+Description=wayvnc attached to the running Hyprland session
+# Loose coupling on purpose: we don't hard-require a specific
+# Hyprland unit name since Omarchy's exact session-launch mechanism
+# can vary. wayvnc-attach.sh does its own wait-and-detect instead.
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/wayvnc-attach.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

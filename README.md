@@ -131,6 +131,28 @@ the exact output of that phase's function, `ss -tlnp | grep -E
   have both had reports of quirks over wayvnc. Shouldn't matter for a
   single-display VM, but test your actual keybinds early.
 
+## Alternatives
+
+[hypr-rdp](https://github.com/MuNeNiCK/hypr-rdp) is a native RDP
+server for Hyprland — no xrdp, no wayvnc. It has audio (PipeWire
+RDPSND), clipboard, and hardware-accelerated H.264 video, all of
+which this bridge lacks. If you just want RDP into your running
+Hyprland session and don't specifically care about Hyper-V, it's the
+more capable option.
+
+Why this project exists anyway: hypr-rdp only binds plain TCP sockets
+(checked its `Cargo.toml` and source — no vsock dependency or
+reference anywhere). Hyper-V's Enhanced Session Mode connects over
+`AF_VSOCK`/`hv_sock`, not TCP, which is exactly what xrdp's
+`port=vsock://-1:3389` handles. So hypr-rdp can't be pointed at
+Enhanced Session directly today — this bridge exists to cover that
+transport gap, at the cost of the features above.
+
+If you don't need Enhanced Session specifically (e.g. you're fine
+using regular `mstsc.exe` over a normal network connection to the
+VM instead of VMConnect), hypr-rdp is worth trying directly instead
+of this whole setup.
+
 ## Security note
 
 `config/wayvnc-config` deliberately disables VNC-level authentication

@@ -5,14 +5,23 @@
 # then execs wayvnc pointed at it. This is what lets wayvnc serve the
 # ACTUAL running Hyprland desktop rather than spawning anything new.
 #
+# wayvnc listens on a UNIX DOMAIN SOCKET inside $XDG_RUNTIME_DIR, not
+# on a TCP port. That directory is mode 0700 and owned by you, so the
+# kernel restricts who can reach the socket to you and root. This
+# matters because wayvnc runs with authentication disabled: anything
+# that can open the socket gets full screen capture AND input
+# injection into your live session (i.e. it can type commands into
+# your terminal). A loopback TCP port would have granted that to every
+# local process and every sandboxed app with network access, which is
+# not a boundary we want here.
+#
 # Designed to be run as a systemd --user unit that starts alongside
 # (but does not block) the normal Hyprland login.
 
 set -euo pipefail
 
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-LISTEN_ADDR="127.0.0.1"
-LISTEN_PORT="5950"
+SOCKET_PATH="${WAYVNC_SOCKET:-$RUNTIME_DIR/wayvnc.sock}"
 MAX_WAIT_SECS=60
 
 log() { echo "[wayvnc-attach] $*"; }
@@ -45,8 +54,18 @@ fi
 export WAYLAND_DISPLAY
 WAYLAND_DISPLAY="$(basename "$sock")"
 log "found Wayland socket: $WAYLAND_DISPLAY"
-log "starting wayvnc on ${LISTEN_ADDR}:${LISTEN_PORT} ..."
+
+# wayvnc won't bind if a stale socket file is left behind by an
+# unclean shutdown. Only this unit ever owns this path, so clearing it
+# is safe; systemd guarantees the previous instance is already gone.
+if [ -e "$SOCKET_PATH" ]; then
+    log "removing stale socket at $SOCKET_PATH"
+    rm -f "$SOCKET_PATH"
+fi
+
+log "starting wayvnc on unix socket $SOCKET_PATH ..."
 
 exec /usr/bin/wayvnc \
     --config="${XDG_CONFIG_HOME:-$HOME/.config}/wayvnc/config" \
-    "$LISTEN_ADDR" "$LISTEN_PORT"
+    --unix-socket \
+    "$SOCKET_PATH"

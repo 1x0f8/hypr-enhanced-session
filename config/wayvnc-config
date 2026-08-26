@@ -1,15 +1,21 @@
 # wayvnc config
 # Installed to: ~/.config/wayvnc/config
 #
-# Kept deliberately minimal for phase 1 testing: no TLS, no VNC auth,
-# because it only ever listens on 127.0.0.1 and the only client
-# connecting to it will be the local xrdp process. xrdp is what
-# actually authenticates the remote user (via the normal Hyper-V
-# enhanced-session login flow) before it ever proxies through to here.
+# Note there is deliberately no `address`/`port` here. wayvnc-attach.sh
+# starts wayvnc with `--unix-socket $XDG_RUNTIME_DIR/wayvnc.sock`
+# instead of binding a TCP port, and those keys only apply to TCP.
 #
-# Harden this later (enable_auth + a password file) if you ever plan
-# to expose this port beyond loopback. Do not do that without auth.
+# enable_auth=false is safe ONLY because of that unix socket.
+# $XDG_RUNTIME_DIR is mode 0700 and owned by you, so the kernel already
+# limits who can open the socket to you and root — and xrdp runs as
+# root, which is how it reaches through. Turning auth on would instead
+# require certificate_file + private_key_file + password (wayvnc only
+# does authentication together with TLS), which xrdp's libvnc.so
+# proxy is not set up to negotiate.
+#
+# Do NOT switch this back to a TCP port while leaving enable_auth=false.
+# Anything that connects here gets screen capture AND input injection
+# into your live desktop — on a loopback port that would mean every
+# local process and every sandboxed app with network access.
 
-address=127.0.0.1
-port=5950
 enable_auth=false

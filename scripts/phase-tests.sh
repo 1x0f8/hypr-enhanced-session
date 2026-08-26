@@ -4,6 +4,11 @@
 # Run each function manually, in order, reporting back what happens
 # at each phase before moving to the next. Don't wire xrdp in until
 # phase 2 passes — otherwise you can't tell which layer broke.
+#
+# Note: wayvnc listens on a unix socket in $XDG_RUNTIME_DIR, not a TCP
+# port, so these checks look for a socket file rather than a listener.
+
+WAYVNC_SOCKET="${WAYVNC_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/wayvnc.sock}"
 
 phase0_check_prereqs() {
     echo "== Phase 0: prerequisites =="
@@ -11,6 +16,8 @@ phase0_check_prereqs() {
     echo -n "Hyprland running? "; pgrep -x Hyprland >/dev/null && echo yes || echo "NO -> is a session logged in?"
     echo -n "Wayland socket present? "; ls "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" | grep -q '^wayland-' && echo yes || echo "NO"
     echo -n "xrdp listening on 3389? "; ss -tlnp 2>/dev/null | grep -q ':3389 ' && echo yes || echo "NO -> systemctl status xrdp"
+    echo -n "xrdp running as root (needed to reach the 0700 runtime dir)? "
+    ps -o user= -C xrdp 2>/dev/null | grep -qx root && echo yes || echo "NO -> see README Security note"
 }
 
 phase1_manual_wayvnc() {
@@ -23,26 +30,44 @@ phase1_manual_wayvnc() {
         return 1
     fi
     echo "Using WAYLAND_DISPLAY=$(basename "$sock")"
-    echo "Running: WAYLAND_DISPLAY=$(basename "$sock") wayvnc 127.0.0.1 5950"
+    echo "Running: wayvnc --unix-socket $WAYVNC_SOCKET"
     echo "(Ctrl+C to stop once you've confirmed the next check passes)"
-    WAYLAND_DISPLAY="$(basename "$sock")" wayvnc 127.0.0.1 5950
+    rm -f "$WAYVNC_SOCKET"
+    WAYLAND_DISPLAY="$(basename "$sock")" wayvnc --unix-socket "$WAYVNC_SOCKET"
 }
 
 phase1b_confirm_listening() {
     echo "== Phase 1b: from a SECOND terminal, while phase1 is still running =="
-    echo -n "Is something listening on 5950? "
-    ss -tlnp 2>/dev/null | grep -q ':5950 ' && echo yes || echo "NO -- wayvnc did not start correctly, check its stderr"
+    echo -n "Does the socket exist? "
+    [ -S "$WAYVNC_SOCKET" ] && echo "yes ($WAYVNC_SOCKET)" || echo "NO -- wayvnc did not start correctly, check its stderr"
+    echo -n "Runtime dir mode (want 700): "; stat -c '%a %U' "$(dirname "$WAYVNC_SOCKET")"
     echo "Raw VNC handshake check (should print something starting with RFB):"
-    timeout 2 bash -c 'exec 3<>/dev/tcp/127.0.0.1/5950; head -c12 <&3' || echo "connection failed"
+    if command -v socat >/dev/null 2>&1; then
+        timeout 2 socat -u "UNIX-CONNECT:$WAYVNC_SOCKET" - 2>/dev/null | head -c 12
+        echo
+    else
+        python3 - "$WAYVNC_SOCKET" <<'EOF'
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(2)
+try:
+    s.connect(sys.argv[1])
+    print(s.recv(12))
+except Exception as e:
+    print("connection failed:", e)
+EOF
+    fi
 }
 
 phase2_install_systemd_unit() {
     echo "== Phase 2: install as a systemd --user unit =="
+    # Resolve paths relative to this script, not the caller's cwd.
+    local root
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || return 1
     mkdir -p ~/.local/bin ~/.config/systemd/user ~/.config/wayvnc
-    cp scripts/wayvnc-attach.sh ~/.local/bin/wayvnc-attach.sh
-    chmod +x ~/.local/bin/wayvnc-attach.sh
-    cp config/wayvnc-config ~/.config/wayvnc/config
-    cp systemd/wayvnc-attach.service ~/.config/systemd/user/wayvnc-attach.service
+    install -m 755 "$root/scripts/wayvnc-attach.sh" ~/.local/bin/wayvnc-attach.sh || return 1
+    install -m 600 "$root/config/wayvnc-config" ~/.config/wayvnc/config || return 1
+    install -m 644 "$root/systemd/wayvnc-attach.service" ~/.config/systemd/user/wayvnc-attach.service || return 1
     systemctl --user daemon-reload
     systemctl --user enable --now wayvnc-attach.service
     sleep 2

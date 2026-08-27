@@ -1,0 +1,5 @@
+# Patch files must always have LF line endings so git apply works on Linux
+patches/*.patch eol=lf
+
+# PKGBUILDs are shell scripts — LF on all platforms
+pkgbuilds/**/PKGBUILD eol=lf

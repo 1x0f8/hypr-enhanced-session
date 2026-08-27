@@ -1,0 +1,38 @@
+# Maintainer: hypr-enhanced-session project — patched build for Hyper-V
+
+pkgname=hyprland-hyprv
+pkgver=0.47.0
+pkgrel=1
+pkgdesc="A dynamic tiling Wayland compositor (patched for Hyper-V: force software rendering mode)"
+arch=('x86_64')
+url="https://github.com/hyprwm/Hyprland"
+license=('BSD-3-Clause')
+depends=('aquamarine-hyprv' 'wayland' 'wayland-protocols' 'libdrm' 'mesa' 'libinput'
+         'pixman' 'hyprutils' 'xorg-xwayland' 'libxcb' 'xcb-util-wm'
+         'hyprcursor' 'hyprland-protocols')
+makedepends=('cmake' 'ninja' 'git' 'wayland-protocols' 'hyprwayland-scanner'
+             'glslang' 'vulkan-headers')
+provides=('hyprland')
+conflicts=('hyprland')
+source=("https://github.com/hyprwm/Hyprland/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    # Force software rendering path so Hyprland runs correctly under Hyper-V's virtual GPU
+    patch -Np1 -d "Hyprland-${pkgver}" < "${startdir}/../../patches/hyprland-software-mode.patch"
+}
+
+build() {
+    cmake -S "Hyprland-${pkgver}" \
+          -B build \
+          -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr
+    ninja -C build
+}
+
+package() {
+    DESTDIR="${pkgdir}" ninja -C build install
+    install -Dm644 "Hyprland-${pkgver}/LICENSE" \
+        "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

@@ -1,0 +1,38 @@
+# Maintainer: hypr-enhanced-session project — patched build for Hyper-V
+
+pkgname=aquamarine-hyprv
+pkgver=0.4.6
+pkgrel=1
+pkgdesc="A very light linux rendering backend library (patched for Hyper-V: renderer init fallback + pixman software renderer)"
+arch=('x86_64')
+url="https://github.com/hyprwm/aquamarine"
+license=('BSD-3-Clause')
+depends=('libglvnd' 'libdrm' 'mesa' 'libinput' 'pixman' 'libseat' 'hyprutils')
+makedepends=('cmake' 'ninja' 'git' 'wayland-protocols' 'hyprwayland-scanner')
+provides=('aquamarine')
+conflicts=('aquamarine')
+source=("https://github.com/hyprwm/aquamarine/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    # Part 1: gracefully handle renderer init failure instead of hard-crashing
+    patch -Np1 -d "aquamarine-${pkgver}" < "${startdir}/../../patches/aquamarine-part1-renderer-init-failed.patch"
+
+    # Part 2: add/enable the pixman software renderer so Hyper-V's virtual GPU works
+    patch -Np1 -d "aquamarine-${pkgver}" < "${startdir}/../../patches/aquamarine-part2-pixman-renderer.patch"
+}
+
+build() {
+    cmake -S "aquamarine-${pkgver}" \
+          -B build \
+          -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr
+    ninja -C build
+}
+
+package() {
+    DESTDIR="${pkgdir}" ninja -C build install
+    install -Dm644 "aquamarine-${pkgver}/LICENSE" \
+        "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

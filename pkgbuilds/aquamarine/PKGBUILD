@@ -1,25 +1,30 @@
 # Maintainer: hypr-enhanced-session project — patched build for Hyper-V
 
 pkgname=aquamarine-hyprv
-pkgver=0.4.6
+pkgver=0.14.0
 pkgrel=1
-pkgdesc="A very light linux rendering backend library (patched for Hyper-V: renderer init fallback + pixman software renderer)"
+pkgdesc="A very light linux rendering backend library (patched for Hyper-V: stop the per-frame CDRMRenderer retry loop when there's no DRM render node)"
 arch=('x86_64')
 url="https://github.com/hyprwm/aquamarine"
 license=('BSD-3-Clause')
-depends=('libglvnd' 'libdrm' 'mesa' 'libinput' 'pixman' 'libseat' 'hyprutils')
+depends=('libglvnd' 'libdrm' 'mesa' 'libinput' 'pixman' 'seatd' 'hyprutils')
 makedepends=('cmake' 'ninja' 'git' 'wayland-protocols' 'hyprwayland-scanner')
-provides=('aquamarine')
+provides=('aquamarine' 'libaquamarine.so=13-64')
 conflicts=('aquamarine')
 source=("https://github.com/hyprwm/aquamarine/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 prepare() {
-    # Part 1: gracefully handle renderer init failure instead of hard-crashing
+    # Renderer init fallback: on hyperv_drm (no DRM render node), CDRMRenderer::attempt()
+    # fails every time initMgpu() is called, which happens on every frame commit — this
+    # latches the failure so it's only attempted (and logged) once.
+    #
+    # NOTE: aquamarine-part2-pixman-renderer.patch and hyprland-software-mode.patch in
+    # this repo are an unported design sketch for a real CPU-backed renderer (drm_dumb +
+    # pixman) rather than just silencing the retry. They don't apply against current
+    # aquamarine/Hyprland source and aren't built here — Mesa's own llvmpipe fallback
+    # already gets the compositor running, just without a documented "software mode".
     patch -Np1 -d "aquamarine-${pkgver}" < "${startdir}/../../patches/aquamarine-part1-renderer-init-failed.patch"
-
-    # Part 2: add/enable the pixman software renderer so Hyper-V's virtual GPU works
-    patch -Np1 -d "aquamarine-${pkgver}" < "${startdir}/../../patches/aquamarine-part2-pixman-renderer.patch"
 }
 
 build() {

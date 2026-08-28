@@ -1,3 +1,10 @@
 .claude/
 *.bak
 *.bak.*
+
+# makepkg build artifacts
+pkgbuilds/*/pkg/
+pkgbuilds/*/src/
+pkgbuilds/*/*.tar.gz
+pkgbuilds/*/*.tar.zst
+pkgbuilds/*/*.tar.xz

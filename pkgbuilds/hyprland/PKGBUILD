@@ -1,4 +1,11 @@
 # Maintainer: hypr-enhanced-session project — patched build for Hyper-V
+#
+# NOT CURRENTLY BUILDABLE: hyprland-software-mode.patch calls
+# IBackendImplementation::isRenderingSoftware(), which only exists once
+# aquamarine-part2-pixman-renderer.patch (unported, see pkgbuilds/aquamarine/PKGBUILD)
+# lands. Right now aquamarine-hyprv only ships the retry-loop fix (part 1), so this
+# package is left as a design placeholder until part 2 is actually ported and built.
+# Hyprland already runs via Mesa's own llvmpipe fallback without this.
 
 pkgname=hyprland-hyprv
 pkgver=0.47.0

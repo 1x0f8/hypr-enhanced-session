@@ -1,141 +1,37 @@
-diff --git a/include/aquamarine/backend/IRenderer.hpp b/include/aquamarine/backend/IRenderer.hpp
-new file mode 100644
-index 0000000..1111111
---- /dev/null
-+++ b/include/aquamarine/backend/IRenderer.hpp
-@@ -0,0 +1,14 @@
-+#pragma once
-+#include <vector>
-+#include <aquamarine/backend/Misc.hpp>
-+
-+namespace Aquamarine {
-+    class IRenderer {
-+      public:
-+        virtual ~IRenderer() = default;
-+        virtual bool isSoftware() const {
-+            return false;
-+        }
-+        std::vector<SGLFormat> formats;
-+    };
-+}
-diff --git a/include/aquamarine/backend/Backend.hpp b/include/aquamarine/backend/Backend.hpp
-index 2222222..3333333 100644
---- a/include/aquamarine/backend/Backend.hpp
-+++ b/include/aquamarine/backend/Backend.hpp
-@@ -88,4 +88,7 @@
-         virtual int                                                       drmRenderNodeFD() = 0;
-         virtual eBackendGPUDriver                                         gpuDriver();
-+        virtual bool                                                      isRenderingSoftware() const {
-+            return false;
-+        }
-     };
- };
-diff --git a/include/aquamarine/backend/DRM.hpp b/include/aquamarine/backend/DRM.hpp
-index 4444444..5555555 100644
---- a/include/aquamarine/backend/DRM.hpp
-+++ b/include/aquamarine/backend/DRM.hpp
-@@ -18,3 +18,5 @@
-+#include <aquamarine/backend/IRenderer.hpp>
-+
- class CDRMRenderer;
- 
- // Inside CDRMBackend class:
-@@ -120,7 +122,10 @@
-     struct {
--        Hyprutils::Memory::CSharedPointer<IAllocator>   allocator;
--        Hyprutils::Memory::CSharedPointer<CDRMRenderer> renderer; // may be null if creation fails
-+        Hyprutils::Memory::CSharedPointer<IAllocator> allocator;
-+        Hyprutils::Memory::CSharedPointer<IRenderer>  renderer; // may be null if creation fails
-     } rendererState;
- 
-     bool              rendererRequired = true;
-+    bool              rendererInitFailed = false;
-     eBackendGPUDriver driver           = AQ_BACKEND_GPU_DRIVER_UNKNOWN;
-+
-+    virtual bool      isRenderingSoftware() const override;
-diff --git a/src/backend/drm/Renderer.hpp b/src/backend/drm/Renderer.hpp
-index 6666666..7777777 100644
---- a/src/backend/drm/Renderer.hpp
-+++ b/src/backend/drm/Renderer.hpp
-@@ -8,4 +8,6 @@
-+#include <aquamarine/backend/IRenderer.hpp>
-+
--class CDRMRenderer {
-+class CDRMRenderer : public IRenderer {
-   public:
-     ~CDRMRenderer();
-     static Hyprutils::Memory::CSharedPointer<CDRMRenderer> attempt(
-@@ -58,7 +60,6 @@
-     void clearBuffer(IBuffer* buf);
-     // ... (shader structs, proc table, exts, egl struct) ...
-     Hyprutils::Memory::CWeakPointer<CDRMRenderer> self;
--    std::vector<SGLFormat>                        formats;
- 
-   private:
-     CDRMRenderer() = default;
-diff --git a/src/backend/drm/DRM.cpp b/src/backend/drm/DRM.cpp
-index 8888888..9999999 100644
---- a/src/backend/drm/DRM.cpp
-+++ b/src/backend/drm/DRM.cpp
-@@ -646,7 +646,11 @@
- bool Aquamarine::CDRMBackend::shouldBlit() {
-     return !!primary;
- }
- 
-+bool Aquamarine::CDRMBackend::isRenderingSoftware() const {
-+    return rendererState.renderer && rendererState.renderer->isSoftware();
-+}
-+
- bool Aquamarine::CDRMBackend::initMgpu() {
+diff --git i/include/aquamarine/backend/DRM.hpp w/include/aquamarine/backend/DRM.hpp
+index b39f739..5f076f7 100644
+--- i/include/aquamarine/backend/DRM.hpp
++++ w/include/aquamarine/backend/DRM.hpp
+@@ -467,8 +467,9 @@ namespace Aquamarine {
+             Hyprutils::Memory::CSharedPointer<CDRMRenderer> renderer; // may be null if creation fails
+         } rendererState;
+
+-        bool                                                          rendererRequired = true;
+-        eBackendGPUDriver                                             driver           = AQ_BACKEND_GPU_DRIVER_UNKNOWN;
++        bool                                                          rendererRequired   = true;
++        bool                                                          rendererInitFailed = false; // set once CDRMRenderer::attempt() fails, e.g. no DRM render node (hyperv_drm); stops retrying every frame commit
++        eBackendGPUDriver                                             driver             = AQ_BACKEND_GPU_DRIVER_UNKNOWN;
+
+         Hyprutils::Memory::CWeakPointer<CBackend>                     backend;
+
+diff --git i/src/backend/drm/DRM.cpp w/src/backend/drm/DRM.cpp
+index 888fef2..40fea84 100644
+--- i/src/backend/drm/DRM.cpp
++++ w/src/backend/drm/DRM.cpp
+@@ -652,6 +652,9 @@ bool Aquamarine::CDRMBackend::initMgpu() {
      if (!rendererRequired)
          return true;
-@@ -679,7 +683,8 @@
-         return false;
-     }
 
--    rendererState.renderer->self = rendererState.renderer;
--
--    buildGlFormats(rendererState.renderer->formats);
-+    if (auto d = std::dynamic_pointer_cast<CDRMRenderer>(rendererState.renderer)) {
-+        d->self = d;
-+        buildGlFormats(rendererState.renderer->formats);
-+    }
-
-@@ -694,6 +699,9 @@
-     if (!primary) {
-+        if (rendererInitFailed)
-+            return false;
++    if (rendererInitFailed)
++        return false;
 +
-         if (rendererState.renderer && rendererState.allocator)
-             return true;
- 
-         return initMgpu();
-     }
-@@ -2156,6 +2164,11 @@
-         SP<Aquamarine::CDRMRenderer> primaryRenderer;
-         if (backend->primary)
--            primaryRenderer = backend->primary->rendererState.renderer;
-+            primaryRenderer = std::dynamic_pointer_cast<CDRMRenderer>(backend->primary->rendererState.renderer);
--        auto blitResult = backend->rendererState.renderer->blit(
-+        auto drmRenderer = std::dynamic_pointer_cast<CDRMRenderer>(backend->rendererState.renderer);
-+        if (!drmRenderer) {
-+            backend->backend->log(AQ_LOG_ERROR, "drm: blit site reached without CDRMRenderer — logic error");
-+            return false;
-+        }
-+        auto blitResult = drmRenderer->blit(
-             STATE.buffer, NEWAQBUF, primaryRenderer, ...);
-     }
-@@ -2370,6 +2383,10 @@
-         SP<Aquamarine::CDRMRenderer> primaryRenderer;
-         if (backend->primary)
--            primaryRenderer = backend->primary->rendererState.renderer;
-+            primaryRenderer = std::dynamic_pointer_cast<CDRMRenderer>(backend->primary->rendererState.renderer);
+     SP<CGBMAllocator> newAllocator;
+     if (primary || backend->primaryAllocator->type() != AQ_ALLOCATOR_TYPE_GBM) {
+         newAllocator            = CGBMAllocator::create(backend->reopenDRMNode(gpu->fd), backend);
+@@ -670,6 +673,7 @@ bool Aquamarine::CDRMBackend::initMgpu() {
 
--        auto blitResult = backend->rendererState.renderer->blit(buf, NEWAQBUF, primaryRenderer);
-+        auto drmRenderer = std::dynamic_pointer_cast<CDRMRenderer>(backend->rendererState.renderer);
-+        if (!drmRenderer) {
-+            backend->backend->log(AQ_LOG_ERROR, "drm: blit site reached without CDRMRenderer — logic error");
-+            return false;
-+        }
-+        auto blitResult = drmRenderer->blit(buf, NEWAQBUF, primaryRenderer);
+     if (!rendererState.renderer) {
+         backend->log(AQ_LOG_ERROR, "drm: initMgpu: no renderer");
++        rendererInitFailed = true;
+         return false;
      }

@@ -11,20 +11,20 @@ depends=('libglvnd' 'libdrm' 'mesa' 'libinput' 'pixman' 'seatd' 'hyprutils')
 makedepends=('cmake' 'ninja' 'git' 'wayland-protocols' 'hyprwayland-scanner')
 provides=('aquamarine' 'libaquamarine.so=13-64')
 conflicts=('aquamarine')
-source=("https://github.com/hyprwm/aquamarine/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+# The patch entry is a symlink to ../../patches/ so the file has one
+# canonical copy in the repo but makepkg still finds it next to the
+# PKGBUILD (a ${startdir}/../.. path would only work inside a checkout).
+source=("https://github.com/hyprwm/aquamarine/archive/refs/tags/v${pkgver}.tar.gz"
+        "aquamarine-part1-renderer-init-failed.patch")
+sha256sums=('5dcf0b17f7dd51539fd7e79d68484f04240b3b63cf9f5f21d5b6dea0088168f9'
+            'c7c9947796016938e3c52af0b5d48ee452b5484fd9b1c225d5eb3dfa359bf540')
 
 prepare() {
     # Renderer init fallback: on hyperv_drm (no DRM render node), CDRMRenderer::attempt()
     # fails every time initMgpu() is called, which happens on every frame commit — this
-    # latches the failure so it's only attempted (and logged) once.
-    #
-    # NOTE: aquamarine-part2-pixman-renderer.patch and hyprland-software-mode.patch in
-    # this repo are an unported design sketch for a real CPU-backed renderer (drm_dumb +
-    # pixman) rather than just silencing the retry. They don't apply against current
-    # aquamarine/Hyprland source and aren't built here — Mesa's own llvmpipe fallback
-    # already gets the compositor running, just without a documented "software mode".
-    patch -Np1 -d "aquamarine-${pkgver}" < "${startdir}/../../patches/aquamarine-part1-renderer-init-failed.patch"
+    # latches the failure so it's only attempted (and logged) once. Actual rendering is
+    # unaffected: Mesa's llvmpipe fallback already runs the compositor in software.
+    patch -Np1 -d "aquamarine-${pkgver}" < aquamarine-part1-renderer-init-failed.patch
 }
 
 build() {

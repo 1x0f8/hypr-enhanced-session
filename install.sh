@@ -68,6 +68,9 @@ backup_xrdp_ini_once() {
 # file-wide `grep` would misreport whether [Globals] has the key.
 set_globals_key() {
     local key="$1" val="$2" tmp
+    # Without this guard, a file with no [Globals] section at all would
+    # pass through the awk unchanged and be misreported as "already set".
+    grep -qxF '[Globals]' "$XRDP_INI" || die "no [Globals] section in $XRDP_INI — not a stock xrdp.ini?"
     tmp="$(mktemp)"
     awk -v key="$key" -v val="$val" '
         BEGIN { in_g = 0; done = 0 }
@@ -236,7 +239,7 @@ tmp="$(mktemp)"
 
 # Collapse any run of blank lines left behind by stripping.
 tmp2="$(mktemp)"
-awk 'NF == 0 { blank++; next } { while (blank-- > 0) print ""; blank = 0; print }' "$tmp" > "$tmp2"
+awk 'NF == 0 { blank = 1; next } { if (blank) print ""; blank = 0; print }' "$tmp" > "$tmp2"
 mv "$tmp2" "$tmp"
 
 if cmp -s "$tmp" "$XRDP_INI"; then

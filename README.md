@@ -168,6 +168,44 @@ using regular `mstsc.exe` over a normal network connection to the
 VM instead of VMConnect), hypr-rdp is worth trying directly instead
 of this whole setup.
 
+## Optional: silencing aquamarine's renderer-retry log spam
+
+Unrelated to the bridge itself, but you'll likely hit it on the same
+VM: Hyper-V's `hyperv_drm` driver exposes no DRM **render node**, so
+aquamarine (Hyprland's backend library) fails to create its GPU
+renderer — and then retries, and re-logs the failure, on **every frame
+commit**, roughly 15 log lines per second, forever. Rendering itself
+is fine (Mesa's llvmpipe software fallback runs the compositor); only
+the retry loop is the bug.
+
+`patches/` and `pkgbuilds/` carry the fix:
+
+- `patches/aquamarine-part1-renderer-init-failed.patch` — a small
+  aquamarine patch that latches the first renderer-init failure so it
+  is attempted (and logged) exactly once, at startup.
+- `pkgbuilds/aquamarine/PKGBUILD` — builds `aquamarine-hyprv`, stock
+  aquamarine 0.14.0 plus that patch. It `provides=`/`conflicts=` the
+  distro `aquamarine` package — including the `libaquamarine.so`
+  soname, so Hyprland and anything else linked against it stays
+  satisfied — and pacman will ask to replace stock aquamarine when
+  you install it:
+
+  ```bash
+  cd pkgbuilds/aquamarine
+  makepkg -si
+  ```
+
+Caveats worth knowing before you build it:
+
+- **It pins aquamarine 0.14.0.** On every upstream aquamarine bump you
+  must bump `pkgver`, refresh `sha256sums`, re-verify the patch still
+  applies, and rebuild — or downgrade back to the distro package
+  (`sudo pacman -S aquamarine`) and live with the log spam.
+- Entirely optional: the bridge works without it, your journal is just
+  noisier.
+- Verified on this setup: built and installed on a live Hyper-V
+  Omarchy VM; the per-frame spam drops to a single line at startup.
+
 ## Security note
 
 Read this before deploying on anything but a single-user VM.
@@ -227,6 +265,8 @@ valid login lands in *your* session. Don't deploy this as-is there.
 - `xrdp/xrdp.ini.patch.md` — the exact `/etc/xrdp/xrdp.ini` change
   `install.sh` makes, with full reasoning, for anyone applying it by
   hand or reviewing what the script does before running it.
+- `patches/`, `pkgbuilds/` — the optional aquamarine log-spam fix
+  described above; not touched by `install.sh`.
 
 ## Rollback
 

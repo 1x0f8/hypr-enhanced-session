@@ -27,9 +27,16 @@ MAX_WAIT_SECS=60
 log() { echo "[wayvnc-attach] $*"; }
 
 find_wayland_socket() {
-    # Hyprland (and most wlroots compositors) create a socket like
-    # $XDG_RUNTIME_DIR/wayland-1. We scan rather than hardcode the
-    # number since it can shift if other sockets already exist.
+    # Prefer the WAYLAND_DISPLAY the session manager already imported
+    # into the systemd --user environment — that is authoritative for
+    # which compositor owns this session. Only fall back to scanning
+    # (sockets are named wayland-N, where N shifts if other sockets
+    # already exist) when it's unset; the scan can in principle find a
+    # socket belonging to some other compositor.
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -S "$RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+        echo "$RUNTIME_DIR/$WAYLAND_DISPLAY"
+        return
+    fi
     find "$RUNTIME_DIR" -maxdepth 1 -name 'wayland-*' -not -name '*.lock' 2>/dev/null | head -n1
 }
 

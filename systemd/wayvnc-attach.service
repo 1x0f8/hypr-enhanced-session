@@ -4,6 +4,10 @@ Description=wayvnc attached to the running Hyprland session
 # Hyprland unit name since Omarchy's exact session-launch mechanism
 # can vary. wayvnc-attach.sh does its own wait-and-detect instead.
 After=graphical-session.target
+# But do stop with the session: without this, logout kills wayvnc,
+# the attach script times out after 60s, and Restart=on-failure
+# respawns it forever on a ~63s cycle until the next login.
+PartOf=graphical-session.target
 
 [Service]
 Type=simple

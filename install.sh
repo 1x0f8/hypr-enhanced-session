@@ -53,6 +53,13 @@ BACKUP_TAKEN=false
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 WAYVNC_SOCKET="$RUNTIME_DIR/wayvnc.sock"
 
+# `systemctl --user` needs these to reach the user manager's bus. They
+# are unset in a bare TTY login or `su` shell even while the graphical
+# session (and its bus) is running, so default them to the standard
+# paths rather than failing with a bus-connection error.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$RUNTIME_DIR}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$RUNTIME_DIR/bus}"
+
 # One backup, before the first modification of the run — not one per
 # edit, and never zero because an earlier branch happened to skip.
 backup_xrdp_ini_once() {
